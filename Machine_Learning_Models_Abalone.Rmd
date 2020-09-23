@@ -1,0 +1,160 @@
+---
+title: "Machine Learning Models on Abalone"
+author: "Austin Ibarra"
+date: "9/23/2020"
+output: pdf_document
+---
+#Abstract
+
+Using the abalone dataset, I attempted to classify each observation as an adult or an infant based on the features of the data. To do this, I used three algorithms: random forest, ripper, and logistic regression for probability. I used the five main steps to organize my findings, with the first two being universal, and the last three steps split into a, b, and c to signify the three respective algorithms. Testing each of the model's fit and accuracy, it seems that the random forest model yields the highest accuracy of 83.51% while the ripper model falls slightly behind. I take high correlation into account when developing the final mmodel of logistic regression, ending up using a few predictor variables from the set.
+
+#Step 1: Load in the dataset
+```{r, include = FALSE}
+library(plyr)
+library(tidyverse)
+library(randomForest)
+```
+
+I will be using the abalone dataset from the UC Irvine repository for the purpose of classification and logistic regeression. In order to do this, I recoded the variable "sex" into a binary variable called "Age" with factors adult (A) and infant (I). I also changed the variable names to easily differentiate between all of them.
+
+Peering into the dataset we see we have several variables we can use in categorization or prediction. Though multicollinearity should be considered in the latter.
+```{r}
+abalone <- read.csv("abalone_csv.csv")
+names(abalone) <- c("Age", "Length", "Diameter", "Height", "Whole_Weight", "Shucked_Weight", "Viscera_Weight", "Shell_Weight", "Rings")
+head(abalone)
+```
+#Step 2: Exploring and preparing the data
+
+Checking the structure of the data
+```{r}
+str(abalone)
+```
+
+Summarize the data
+```{r}
+summary(abalone)
+```
+
+Checking correlations for logistic regression. There appears to be high correlations among the explanatory variables such as the weights with eachother as well as the dimensions, so dropping some of these features in the future may prove useful for logistic regression.
+```{r}
+pairs(abalone)
+```
+
+
+Split into training and test datasets
+```{r}
+set.seed(126)
+train <- sample(nrow(abalone), 0.7*nrow(abalone), replace = FALSE)
+abalone_train <- abalone[train, ]
+abalone_test <- abalone[-train, ]
+```
+
+#Step 3a: Training a random forest model on the data
+
+Randomforest model with default parameters
+```{r}
+library(randomForest)
+abalone_rf <- randomForest(Age ~ ., data = abalone_train, importance = TRUE)
+```
+
+#Step 3b: Training a ripper model on the data
+
+Ripper algorithm
+```{r}
+library(RWeka)
+abalone_rip <- OneR(Age ~ ., data = abalone_train)
+
+abalone_pred <- predict(abalone_rip, abalone_test)
+```
+#Step 3c : Training a Logistic Regression model on the data
+
+Logistic regression
+```{r}
+abalone_glm <- glm(Age ~ ., family = "binomial", data = abalone_train)
+```
+
+#Step 4a: Evaluating the random forest model performance
+
+Random forest accuracy
+```{r}
+abalone_rf
+```
+
+#Step 4b: Evaluating the ripper algorithm performance
+
+Summary of ripper performance on training data
+```{r}
+summary(abalone_rip)
+```
+
+Evaluating the accuracy of the ripper algorithm on test data. The training model on the test dataset yields an accuracy of about 77%.
+```{r}
+library(gmodels)
+CrossTable(abalone_test$Age, abalone_pred,
+           prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+           dnn = c('actual default', 'predicted default'))
+```
+
+#Step 4c: Evaluating the logistic regression performance
+
+Logistic regression parameter model.
+```{r}
+summary(abalone_glm)
+```
+
+#Step 5a: Improving the random forest model performance
+
+Tuning and improving the random forest model. Using many different values for the number of trees and variables tried at each split, this tuned model yields the lowest error rate of 16.49%.
+```{r}
+abalone_rf2 <- randomForest(Age ~ ., data = abalone_train, ntree = 650, mtry = 1, importance = TRUE)
+abalone_rf2
+```
+#Step 5b: Improving the ripper performance
+
+Step 2 contains a scatterplot matrix that shows heavy correlations with certain measurements when plotted against eachother. To reduce redundancy in the model, I decided to drop most of the predictors, except the ones that were significant according to the logistic regression output.
+
+This did not improve the accuracy of the model, and the error rate remains capped at about 17%
+```{r}
+abalone_rip1 <- OneR(Age ~ Length + Viscera_Weight + Rings + Whole_Weight, data = abalone_train)
+
+summary(abalone_rip1)
+```
+
+#Step 5c: Improving the logistic regression model performance
+
+To reduce the redundancy and multicollinearity, I decided to run a backwards stepwise selection of the regression model.
+
+The selection was semi-successful as I still have insignificant predictors in the model, however I check for variance inflation factors.
+```{r}
+abalone_glm_step <- step(abalone_glm)
+summary(abalone_glm_step)
+```
+
+According to the variance inflation factors, there are high correlations with some of the predictors in the model.
+```{r}
+library(faraway)
+round(vif(abalone_glm_step), 2)
+```
+
+Taking a closer look at the scatterplot matrix in step 2, it's easy to understand that predictors such as Viscera Weight and Whole_Weight would be highly correlated, so I drop those predictors in favor for my final logistic regression model.
+```{r}
+abalone_reduce <- abalone %>% select(Age, Length, Viscera_Weight, Rings)
+abalone_rglm <- glm(Age ~ ., family = "binomial", data = abalone_reduce)
+summary(abalone_rglm)
+```
+
+#Conclusion
+
+In an attempt to correctly classify the abalone dataset into adults and infants, I used three algorithms: Random Forest, Ripper, and logistic regression for prediction. Both classification algorithms, random forest and ripper, were both capped at an error rate slightly above 17%, but as we improved the model it became clear that the random forest yielded the smallest error rate at 16.49% while the ripper model was at 17.07%. Improving our logistic regression model, I checked the variance inflation factors and noted high correlations. To account for this, I dropped explanatory variables that were correlated with eachother and ended up only using length, viscera weight, and number of rings to predict the probability of the abalone being an adult or infant given the parameters of the model.
+
+In future models, it may be of use to take note of the significant variation of abalone adult dimensions compared to infants. As infants, more or less, tend to have the same shell and weight dimensions, and grow up to have significantly different ones, resulting in a fan shaped pattern in the data. This may account for the capped error rate around 17% in both ripper and random forest models.
+
+
+
+
+
+
+
+
+
+
